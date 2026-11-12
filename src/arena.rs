@@ -3,15 +3,20 @@
 extern crate alloc as core_alloc;
 
 use core::ptr::{
+    self,
     NonNull,
     write,
     write_bytes,
 };
 
+use core::cell::Cell;
+
 use core::mem::{
     align_of,
     size_of,
 };
+
+use core::slice;
 
 use core_alloc::alloc::{
     Layout,
@@ -21,13 +26,25 @@ use core_alloc::alloc::{
 };
 
 pub struct Arena {
-    offset: usize,
-    aligment: usize,
+    offset: Cell<usize>,
     cap: usize,
     ptr_buffer: *mut u8,
 }
+// #[derive(Debug)]
+// pub enum AllocError {
+//     NotEnoughSpace,
+// }
 
 impl Arena {
+    // HELPER FUNCTIONS
+    pub fn get_capacity(&self) -> usize {
+        self.cap
+    }
+
+    pub fn get_offset(&self) -> usize {
+        self.offset.get()
+    }
+
     pub fn new() -> Self {
         let cap: usize = 4096;
         let layout = Layout::array::<u8>(cap).unwrap();
@@ -35,8 +52,7 @@ impl Arena {
         let raw_ptr = unsafe { alloc(layout) };
 
         Self {
-            offset: 0,
-            aligment: 8,
+            offset: Cell::new(0),
             cap,
             ptr_buffer: raw_ptr,
         }
@@ -48,10 +64,46 @@ impl Arena {
         let raw_ptr = unsafe { alloc(layout) };
 
         Self {
-            offset: 0,
-            aligment: 8,
+            offset: Cell::new(0),
             cap,
             ptr_buffer: raw_ptr,
+        }
+    }
+
+    pub fn alloc<'a, T>(&self, value: T) -> Result<&'a mut T, &'static str> {
+        let size = size_of::<T>();
+        let align = align_of::<T>();
+
+        let current_offset = self.offset.get();
+        let current_addr = unsafe { self.ptr_buffer.add(current_offset) as usize };
+        let padding = (align - (current_addr % align)) % align;
+
+        let total_needed = padding + size;
+        let dest_addr = current_addr + padding;
+        let dest_ptr = dest_addr as *mut T;
+
+        if total_needed + current_offset > self.cap {
+            return Err("Not enough memory");
+        }
+
+        unsafe {
+            ptr::write(dest_ptr, value);
+        }
+
+        self.offset.set(current_offset + total_needed);
+
+        unsafe { Ok(&mut *dest_ptr) }
+    }
+}
+
+impl Drop for Arena {
+    fn drop(&mut self) {
+        if self.cap > 0 {
+            let layout = Layout::array::<u8>(self.cap).unwrap();
+
+            unsafe {
+                dealloc(self.ptr_buffer, layout);
+            }
         }
     }
 }
