@@ -94,16 +94,18 @@ impl Arena {
 
         unsafe { Ok(&mut *dest_ptr) }
     }
+
+    pub fn reset(&self) {
+        self.offset.set(0);
+    }
 }
 
 impl Drop for Arena {
     fn drop(&mut self) {
-        if self.cap > 0 {
-            let layout = Layout::array::<u8>(self.cap).unwrap();
+        let layout = Layout::array::<u8>(self.cap).unwrap();
 
-            unsafe {
-                dealloc(self.ptr_buffer, layout);
-            }
+        unsafe {
+            dealloc(self.ptr_buffer, layout);
         }
     }
 }
