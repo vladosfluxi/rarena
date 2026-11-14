@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
 extern crate alloc as core_alloc;
 
 use core::ptr::{
@@ -23,14 +21,14 @@ use core_alloc::alloc::{
     LayoutError,
     alloc,
     dealloc,
-    handle_alloc_error
+    handle_alloc_error,
 };
 
 pub struct Arena {
     offset: Cell<usize>,
     cap: usize,
     ptr_buffer: *mut u8,
-    layout:Layout
+    layout: Layout,
 }
 
 impl Arena {
@@ -42,6 +40,17 @@ impl Arena {
     pub fn get_offset(&self) -> usize {
         self.offset.get()
     }
+    
+    fn calculate_totalneeded_destaddr(&self, size:usize,align:usize) -> (usize,usize) {
+        let current_offset = self.offset.get();
+        let current_addr = unsafe { self.ptr_buffer.add(current_offset) as usize };
+
+        let padding = (align - (current_addr % align)) % align;
+        let total_needed = padding + size;
+
+        let dest_addr = current_addr + padding;
+        (total_needed,dest_addr)
+    }
 
     pub fn new() -> Self {
         let cap: usize = 4096;
@@ -49,15 +58,11 @@ impl Arena {
 
         let raw_ptr = unsafe { alloc(layout) };
 
-        // if raw_ptr.is_null(){
-        //     handle_alloc_error(layout);
-        // }
-
         Self {
             offset: Cell::new(0),
             cap,
             ptr_buffer: raw_ptr,
-            layout
+            layout,
         }
     }
 
@@ -66,85 +71,78 @@ impl Arena {
 
         let raw_ptr = unsafe { alloc(layout) };
 
-        
-
         Self {
             offset: Cell::new(0),
             cap,
             ptr_buffer: raw_ptr,
-            layout
+            layout,
         }
     }
 
-    pub fn with_layout(layout:Layout) -> Self{
+    pub fn with_layout(layout: Layout) -> Self {
         let cap = layout.size();
-        let raw_ptr = unsafe  {
-            alloc(layout)
-        };  
-
-        // if raw_ptr.is_null() {
-        //     handle_alloc_error(layout);
-        // }
+        let raw_ptr = unsafe { alloc(layout) };
 
         Self {
             offset: Cell::new(0),
             cap,
             ptr_buffer: raw_ptr,
-            layout
+            layout,
         }
     }
-    
-    pub fn alloc_arr<'a, T:Clone>(&self, values: &[T]) -> Result<&'a mut [T], &'static str> {
 
+    pub fn alloc_arr<'a, T: Clone>(&self, values: &[T]) -> Result<&'a mut [T], &'static str> {
         let size = size_of_val(&values);
         let align = align_of_val(&values);
 
         let current_offset = self.offset.get();
-        let current_addr = unsafe {
-            self.ptr_buffer.add(current_offset) as usize 
-        };
 
-        let padding = (align - (current_addr % align)) % align;
-        let total_needed = padding + size;
-
-        let dest_addr = current_addr + padding;
+        let (total_needed,dest_addr) = self.calculate_totalneeded_destaddr(size, align);
+        
         let dest_ptr = dest_addr as *mut T;
-
 
         if total_needed + current_offset > self.cap {
             return Err("Not enough memory");
         }
-        
+
         let count = values.len();
-        let fat_ptr:*mut [T] = unsafe {slice::from_raw_parts_mut(dest_ptr,count) };
+        let fat_ptr: *mut [T] = unsafe { slice::from_raw_parts_mut(dest_ptr, count) };
 
         unsafe {
-            for (i,item) in values.iter().enumerate() {
-                ptr::write(dest_ptr.add(i),item.clone());
+            for (i, item) in values.iter().enumerate() {
+                ptr::write(dest_ptr.add(i), item.clone());
             }
         }
 
-        self.offset.set(current_offset + total_needed) ;
-        
-        unsafe {
-            Ok(&mut *fat_ptr)
-        }
+        self.offset.set(current_offset + total_needed);
+
+        unsafe { Ok(&mut *fat_ptr) }
     }
 
+    pub fn alloc_slice<'a, T>(&self, count: usize) -> Result<&'a mut [T], &'static str> {
+        let align = align_of::<T>();
+        let size = size_of::<T>() * count;
+        let offset = self.offset.get();
+        let (total_needed,dest_addr) = self.calculate_totalneeded_destaddr(size, align);
 
+        let dest_ptr = dest_addr as *mut T;
 
+        if total_needed + offset > self.cap {
+            return Err("Not enough memory");
+        }
 
+        let fat_ptr: *mut [T] = unsafe { slice::from_raw_parts_mut(dest_ptr, count) };
+
+        self.offset.set(offset + total_needed);
+
+        unsafe { Ok(&mut *fat_ptr) }
+    }
 
     pub fn alloc<'a, T>(&self, value: T) -> Result<&'a mut T, &'static str> {
         let size = size_of::<T>();
         let align = align_of::<T>();
-
         let current_offset = self.offset.get();
-        let current_addr = unsafe { self.ptr_buffer.add(current_offset) as usize };
-        let padding = (align - (current_addr % align)) % align;
-
-        let total_needed = padding + size;
-        let dest_addr = current_addr + padding;
+        let (total_needed,dest_addr) = self.calculate_totalneeded_destaddr(size, align);
         let dest_ptr = dest_addr as *mut T;
 
         if total_needed + current_offset > self.cap {
@@ -171,14 +169,11 @@ impl Arena {
     pub fn remaining_capacity(&self) -> usize {
         self.cap - self.offset.get()
     }
-    
-     
 }
-
 impl Drop for Arena {
     fn drop(&mut self) {
         unsafe {
-            dealloc(self.ptr_buffer,self.layout );
+            dealloc(self.ptr_buffer, self.layout);
         }
     }
 }
