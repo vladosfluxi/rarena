@@ -23,17 +23,15 @@ use core_alloc::alloc::{
     LayoutError,
     alloc,
     dealloc,
+    handle_alloc_error
 };
 
 pub struct Arena {
     offset: Cell<usize>,
     cap: usize,
     ptr_buffer: *mut u8,
+    layout:Layout
 }
-// #[derive(Debug)]
-// pub enum AllocError {
-//     NotEnoughSpace,
-// }
 
 impl Arena {
     // HELPER FUNCTIONS
@@ -51,10 +49,15 @@ impl Arena {
 
         let raw_ptr = unsafe { alloc(layout) };
 
+        // if raw_ptr.is_null(){
+        //     handle_alloc_error(layout);
+        // }
+
         Self {
             offset: Cell::new(0),
             cap,
             ptr_buffer: raw_ptr,
+            layout
         }
     }
 
@@ -63,10 +66,31 @@ impl Arena {
 
         let raw_ptr = unsafe { alloc(layout) };
 
+        
+
         Self {
             offset: Cell::new(0),
             cap,
             ptr_buffer: raw_ptr,
+            layout
+        }
+    }
+
+    pub fn with_layout(layout:Layout) -> Self{
+        let cap = layout.size();
+        let raw_ptr = unsafe  {
+            alloc(layout)
+        };  
+
+        // if raw_ptr.is_null() {
+        //     handle_alloc_error(layout);
+        // }
+
+        Self {
+            offset: Cell::new(0),
+            cap,
+            ptr_buffer: raw_ptr,
+            layout
         }
     }
 
@@ -95,6 +119,8 @@ impl Arena {
         unsafe { Ok(&mut *dest_ptr) }
     }
 
+    
+
     pub fn reset(&self) {
         self.offset.set(0);
     }
@@ -102,10 +128,8 @@ impl Arena {
 
 impl Drop for Arena {
     fn drop(&mut self) {
-        let layout = Layout::array::<u8>(self.cap).unwrap();
-
         unsafe {
-            dealloc(self.ptr_buffer, layout);
+            dealloc(self.ptr_buffer,self.layout );
         }
     }
 }
