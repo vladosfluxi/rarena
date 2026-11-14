@@ -93,6 +93,47 @@ impl Arena {
             layout
         }
     }
+    
+    pub fn alloc_arr<'a, T:Clone>(&self, values: &[T]) -> Result<&'a mut [T], &'static str> {
+
+        let size = size_of_val(&values);
+        let align = align_of_val(&values);
+
+        let current_offset = self.offset.get();
+        let current_addr = unsafe {
+            self.ptr_buffer.add(current_offset) as usize 
+        };
+
+        let padding = (align - (current_addr % align)) % align;
+        let total_needed = padding + size;
+
+        let dest_addr = current_addr + padding;
+        let dest_ptr = dest_addr as *mut T;
+
+
+        if total_needed + current_offset > self.cap {
+            return Err("Not enough memory");
+        }
+        
+        let count = values.len();
+        let fat_ptr:*mut [T] = unsafe {slice::from_raw_parts_mut(dest_ptr,count) };
+
+        unsafe {
+            for (i,item) in values.iter().enumerate() {
+                ptr::write(dest_ptr.add(i),item.clone());
+            }
+        }
+
+        self.offset.set(current_offset + total_needed) ;
+        
+        unsafe {
+            Ok(&mut *fat_ptr)
+        }
+    }
+
+
+
+
 
     pub fn alloc<'a, T>(&self, value: T) -> Result<&'a mut T, &'static str> {
         let size = size_of::<T>();
@@ -131,7 +172,7 @@ impl Arena {
         self.cap - self.offset.get()
     }
     
-    
+     
 }
 
 impl Drop for Arena {
