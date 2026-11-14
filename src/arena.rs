@@ -119,11 +119,19 @@ impl Arena {
         unsafe { Ok(&mut *dest_ptr) }
     }
 
-    
-
     pub fn reset(&self) {
         self.offset.set(0);
     }
+
+    pub fn allocated_bytes(&self) -> usize {
+        self.offset.get()
+    }
+
+    pub fn remaining_capacity(&self) -> usize {
+        self.cap - self.offset.get()
+    }
+    
+    
 }
 
 impl Drop for Arena {

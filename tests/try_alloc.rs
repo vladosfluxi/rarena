@@ -87,5 +87,15 @@ mod initialization {
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Not enough memory");
+    } 
+    #[test]
+    fn test_helpers() {
+        let arena = Arena::with_capacity(8);
+        let result = arena.alloc(0_i64);
+        
+        assert_eq!(arena.allocated_bytes(),8);
+        assert_eq!(arena.remaining_capacity(),0);
+
     }
+    
 }
