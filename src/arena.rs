@@ -7,6 +7,8 @@ use core::ptr::{
     write_bytes,
 };
 
+use core::marker::PhantomData;
+
 use core::cell::Cell;
 
 use core::mem::{
@@ -24,14 +26,18 @@ use core_alloc::alloc::{
     handle_alloc_error,
 };
 
-pub struct Arena {
+pub struct Uninit;
+pub struct Init;
+
+pub struct Arena<S = Uninit> {
     offset: Cell<usize>,
     cap: usize,
     ptr_buffer: *mut u8,
     layout: Layout,
+    state: PhantomData<S>,
 }
 
-impl Arena {
+impl Arena<Init> {
     // HELPER FUNCTIONS
     pub fn get_capacity(&self) -> usize {
         self.cap
@@ -40,8 +46,8 @@ impl Arena {
     pub fn get_offset(&self) -> usize {
         self.offset.get()
     }
-    
-    fn calculate_totalneeded_destaddr(&self, size:usize,align:usize) -> (usize,usize) {
+
+    fn calculate_totalneeded_destaddr(&self, size: usize, align: usize) -> (usize, usize) {
         let current_offset = self.offset.get();
         let current_addr = unsafe { self.ptr_buffer.add(current_offset) as usize };
 
@@ -49,21 +55,11 @@ impl Arena {
         let total_needed = padding + size;
 
         let dest_addr = current_addr + padding;
-        (total_needed,dest_addr)
+        (total_needed, dest_addr)
     }
 
     pub fn new() -> Self {
-        let cap: usize = 4096;
-        let layout = Layout::array::<u8>(cap).unwrap();
-
-        let raw_ptr = unsafe { alloc(layout) };
-
-        Self {
-            offset: Cell::new(0),
-            cap,
-            ptr_buffer: raw_ptr,
-            layout,
-        }
+        Self::with_capacity(4096)
     }
 
     pub fn with_capacity(cap: usize) -> Self {
@@ -76,6 +72,7 @@ impl Arena {
             cap,
             ptr_buffer: raw_ptr,
             layout,
+            state: PhantomData,
         }
     }
 
@@ -88,6 +85,7 @@ impl Arena {
             cap,
             ptr_buffer: raw_ptr,
             layout,
+            state: PhantomData,
         }
     }
 
@@ -97,8 +95,8 @@ impl Arena {
 
         let current_offset = self.offset.get();
 
-        let (total_needed,dest_addr) = self.calculate_totalneeded_destaddr(size, align);
-        
+        let (total_needed, dest_addr) = self.calculate_totalneeded_destaddr(size, align);
+
         let dest_ptr = dest_addr as *mut T;
 
         if total_needed + current_offset > self.cap {
@@ -123,7 +121,7 @@ impl Arena {
         let align = align_of::<T>();
         let size = size_of::<T>() * count;
         let offset = self.offset.get();
-        let (total_needed,dest_addr) = self.calculate_totalneeded_destaddr(size, align);
+        let (total_needed, dest_addr) = self.calculate_totalneeded_destaddr(size, align);
 
         let dest_ptr = dest_addr as *mut T;
 
@@ -142,7 +140,7 @@ impl Arena {
         let size = size_of::<T>();
         let align = align_of::<T>();
         let current_offset = self.offset.get();
-        let (total_needed,dest_addr) = self.calculate_totalneeded_destaddr(size, align);
+        let (total_needed, dest_addr) = self.calculate_totalneeded_destaddr(size, align);
         let dest_ptr = dest_addr as *mut T;
 
         if total_needed + current_offset > self.cap {
@@ -170,7 +168,7 @@ impl Arena {
         self.cap - self.offset.get()
     }
 }
-impl Drop for Arena {
+impl<S> Drop for Arena<S> {
     fn drop(&mut self) {
         unsafe {
             dealloc(self.ptr_buffer, self.layout);
