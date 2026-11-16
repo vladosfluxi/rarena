@@ -6,6 +6,6 @@ edition = "2024"
 [dev-dependencies]
 criterion = "0.8.2"
 
-# [[bench]]
-# name = "benchmark"
-# harness = false
+[[bench]]
+name = "benches"
+harness = false
