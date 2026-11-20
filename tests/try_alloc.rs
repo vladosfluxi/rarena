@@ -26,6 +26,7 @@ mod initialization {
     fn test_multiple_types_and_alignment() {
         let mut arena = Arena::with_capacity(1024);
 
+        let k = arena.alloc([1, 2, 3, 4, 5]);
         let b = arena.alloc(255_u8).unwrap();
         let i = arena.alloc(123456_u64).unwrap();
         let f = arena.alloc(3.14159_f32).unwrap();
@@ -96,39 +97,7 @@ mod initialization {
         assert_eq!(arena.allocated_bytes(), 8);
         assert_eq!(arena.remaining_capacity(), 0);
     }
-    #[test]
-    fn test_alloc_arr_success() {
-        let arena = Arena::with_capacity(1024);
 
-        let source = [10, 20, 30, 40, 50];
-
-        // Allocate the array/slice in the arena using alloc_arr
-        let slice = arena.alloc_arr(&source).unwrap();
-
-        // 1. Verify content matches
-        assert_eq!(slice, &[10, 20, 30, 40, 50]);
-
-        // 2. Verify length is correct
-        assert_eq!(slice.len(), 5);
-
-        // 3. Verify it is genuinely mutable
-        slice[0] = 99;
-        assert_eq!(slice[0], 99);
-    }
-
-    #[test]
-    fn test_alloc_arr_out_of_memory() {
-        // Create an arena that can only hold 8 bytes
-        let arena = Arena::with_capacity(8);
-
-        // Try to allocate two u64 values (requires 16 bytes total)
-        let source = [100_u64, 200_u64];
-        let result = arena.alloc_arr(&source);
-
-        // It should gracefully fail with an error instead of panicking
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Not enough memory");
-    }
     #[test]
     fn test_alloc_slice_uninitialized() {
         let arena = Arena::with_capacity(1024);

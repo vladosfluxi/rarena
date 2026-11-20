@@ -2,3 +2,4 @@
 #![allow(unused_imports)]
 #![no_std]
 pub mod arena;
+pub mod boxed;
