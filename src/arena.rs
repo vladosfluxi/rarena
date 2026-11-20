@@ -63,16 +63,7 @@ impl Arena<Init> {
 
     pub fn with_capacity(cap: usize) -> Self {
         let layout = Layout::array::<u8>(cap).unwrap();
-
-        let raw_ptr = unsafe { alloc(layout) };
-
-        Self {
-            offset: Cell::new(0),
-            cap,
-            ptr_buffer: raw_ptr,
-            layout,
-            state: PhantomData,
-        }
+        Self::with_layout(layout)
     }
 
     pub fn with_layout(layout: Layout) -> Self {
@@ -88,37 +79,9 @@ impl Arena<Init> {
         }
     }
 
-    // pub fn alloc_arr<'a, T: Clone>(&self, values: &[T]) -> Result<&'a mut [T], &'static str> {
-    //     let size = size_of_val(&values);
-    //     let align = align_of_val(&values);
-    //
-    //     let current_offset = self.offset.get();
-    //
-    //     let (total_needed, dest_addr) = self.calculate_totalneeded_destaddr(size, align);
-    //
-    //     let dest_ptr = dest_addr as *mut T;
-    //
-    //     if total_needed + current_offset > self.cap {
-    //         return Err("Not enough memory");
-    //     }
-    //
-    //     let count = values.len();
-    //     let fat_ptr: *mut [T] = unsafe { slice::from_raw_parts_mut(dest_ptr, count) };
-    //
-    //     unsafe {
-    //         for (i, item) in values.iter().enumerate() {
-    //             ptr::write(dest_ptr.add(i), item.clone());
-    //         }
-    //     }
-    //
-    //     self.offset.set(current_offset + total_needed);
-    //
-    //     unsafe { Ok(&mut *fat_ptr) }
-    // }
-
-    pub fn alloc_slice<'a, T>(&self, count: usize) -> Result<&'a mut [T], &'static str> {
+    pub fn alloc_slice<'a, T>(&'a self, count: usize) -> Result<&'a mut [T], &'static str> {
         let align = align_of::<T>();
-        let size = size_of::<T>() * count;
+        let size = size_of::<T>().checked_mul(count).ok_or("Size overflow")?;
         let offset = self.offset.get();
         let (total_needed, dest_addr) = self.calculate_totalneeded_destaddr(size, align);
 
@@ -135,7 +98,7 @@ impl Arena<Init> {
         unsafe { Ok(&mut *fat_ptr) }
     }
 
-    pub fn alloc<'a, T>(&self, value: T) -> Result<&'a mut T, &'static str> {
+    pub fn alloc<'a, T>(&'a self, value: T) -> Result<&'a mut T, &'static str> {
         let size = size_of::<T>();
         let align = align_of::<T>();
         let current_offset = self.offset.get();
@@ -155,7 +118,7 @@ impl Arena<Init> {
         unsafe { Ok(&mut *dest_ptr) }
     }
 
-    pub fn reset(&self) {
+    pub fn reset(&mut self) {
         self.offset.set(0);
     }
 

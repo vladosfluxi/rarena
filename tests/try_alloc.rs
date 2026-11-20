@@ -21,7 +21,12 @@ mod initialization {
         *num = 100;
         assert_eq!(*num, 100);
     }
-
+    #[test]
+    fn test_array_allocation() {
+        let mut arena = Arena::new();
+        let arr = arena.alloc([1, 2, 3, 3, 4]).unwrap();
+        assert_eq!(arr[1], 2);
+    }
     #[test]
     fn test_multiple_types_and_alignment() {
         let mut arena = Arena::with_capacity(1024);
@@ -96,6 +101,15 @@ mod initialization {
 
         assert_eq!(arena.allocated_bytes(), 8);
         assert_eq!(arena.remaining_capacity(), 0);
+    }
+
+    #[test]
+    fn test_reset() {
+        let mut arena = Arena::new();
+        let var = arena.alloc(1_u32).unwrap();
+        arena.reset();
+        let var = arena.alloc(19_usize).unwrap();
+        assert_eq!(*var, 19);
     }
 
     #[test]
