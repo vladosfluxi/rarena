@@ -18,6 +18,7 @@ use core::mem::{
 
 use core::slice;
 
+use core::mem::MaybeUninit;
 use core_alloc::alloc::{
     Layout,
     LayoutError,
@@ -34,6 +35,7 @@ pub struct Arena<S = Uninit> {
     cap: usize,
     ptr_buffer: *mut u8,
     layout: Layout,
+    pub prev: Option<NonNull<Arena>>,
     state: PhantomData<S>,
 }
 
@@ -57,16 +59,16 @@ impl Arena<Init> {
         (total_needed, dest_addr)
     }
 
-    pub fn new() -> Self {
-        Self::with_capacity(4096)
+    pub fn new(prev: Option<NonNull<Arena>>) -> Self {
+        Self::with_capacity(4096, prev)
     }
 
-    pub fn with_capacity(cap: usize) -> Self {
+    pub fn with_capacity(cap: usize, prev: Option<NonNull<Arena>>) -> Self {
         let layout = Layout::array::<u8>(cap).unwrap();
-        Self::with_layout(layout)
+        Self::with_layout(layout, prev)
     }
 
-    pub fn with_layout(layout: Layout) -> Self {
+    pub fn with_layout(layout: Layout, prev: Option<NonNull<Arena>>) -> Self {
         let cap = layout.size();
         let raw_ptr = unsafe { alloc(layout) };
 
@@ -75,6 +77,7 @@ impl Arena<Init> {
             cap,
             ptr_buffer: raw_ptr,
             layout,
+            prev,
             state: PhantomData,
         }
     }
@@ -91,11 +94,9 @@ impl Arena<Init> {
             return Err("Not enough memory");
         }
 
-        let fat_ptr: *mut [T] = unsafe { slice::from_raw_parts_mut(dest_ptr, count) };
-
         self.offset.set(offset + total_needed);
 
-        unsafe { Ok(&mut *fat_ptr) }
+        unsafe { Ok(slice::from_raw_parts_mut(dest_ptr, count)) }
     }
 
     pub fn alloc<'a, T>(&'a self, value: T) -> Result<&'a mut T, &'static str> {
@@ -118,6 +119,12 @@ impl Arena<Init> {
         unsafe { Ok(&mut *dest_ptr) }
     }
 
+    pub fn dealloc(&self) {
+        unsafe {
+            dealloc(self.ptr_buffer, self.layout);
+        }
+    }
+
     pub fn reset(&mut self) {
         self.offset.set(0);
     }
@@ -130,10 +137,10 @@ impl Arena<Init> {
         self.cap - self.offset.get()
     }
 }
-impl<S> Drop for Arena<S> {
-    fn drop(&mut self) {
-        unsafe {
-            dealloc(self.ptr_buffer, self.layout);
-        }
-    }
-}
+// impl<S> Drop for Arena<S> {
+//     fn drop(&mut self) {
+//         unsafe {
+//             dealloc(self.ptr_buffer, self.layout);
+//         }
+//     }
+// }
