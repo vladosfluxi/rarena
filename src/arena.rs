@@ -72,6 +72,10 @@ impl Arena<Init> {
         let cap = layout.size();
         let raw_ptr = unsafe { alloc(layout) };
 
+        if raw_ptr.is_null() {
+            handle_alloc_error(layout)
+        }
+
         Self {
             offset: Cell::new(0),
             cap,
@@ -82,16 +86,18 @@ impl Arena<Init> {
         }
     }
 
-    pub fn alloc_slice<'a, T>(&'a self, count: usize) -> Result<&'a mut [T], &'static str> {
+    pub fn alloc_slice<'a, T>(&'a self, count: usize) -> Result<&'a mut [T], AllocError> {
         let align = align_of::<T>();
-        let size = size_of::<T>().checked_mul(count).ok_or("Size overflow")?;
+        let size = size_of::<T>()
+            .checked_mul(count)
+            .ok_or(AllocError::SizeOverflow)?;
         let offset = self.offset.get();
         let (total_needed, dest_addr) = self.calculate_totalneeded_destaddr(size, align);
 
         let dest_ptr = dest_addr as *mut T;
 
         if total_needed + offset > self.cap {
-            return Err("Not enough memory");
+            return Err(AllocError::OutOfMemory);
         }
 
         self.offset.set(offset + total_needed);
@@ -99,7 +105,7 @@ impl Arena<Init> {
         unsafe { Ok(slice::from_raw_parts_mut(dest_ptr, count)) }
     }
 
-    pub fn alloc<'a, T>(&'a self, value: T) -> Result<&'a mut T, &'static str> {
+    pub fn alloc<'a, T>(&'a self, value: T) -> Result<&'a mut T, AllocError> {
         let size = size_of::<T>();
         let align = align_of::<T>();
         let current_offset = self.offset.get();
@@ -107,7 +113,7 @@ impl Arena<Init> {
         let dest_ptr = dest_addr as *mut T;
 
         if total_needed + current_offset > self.cap {
-            return Err("Not enough memory");
+            return Err(AllocError::OutOfMemory);
         }
 
         unsafe {
@@ -137,10 +143,9 @@ impl Arena<Init> {
         self.cap - self.offset.get()
     }
 }
-// impl<S> Drop for Arena<S> {
-//     fn drop(&mut self) {
-//         unsafe {
-//             dealloc(self.ptr_buffer, self.layout);
-//         }
-//     }
-// }
+#[derive(Debug, PartialEq, Eq)]
+pub enum AllocError {
+    AllocErr,
+    OutOfMemory,
+    SizeOverflow,
+}
