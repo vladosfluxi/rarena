@@ -3,39 +3,41 @@ mod initialization {
         AllocError,
         Arena,
     };
-    use std::alloc::handle_alloc_error;
 
     #[test]
     fn test_init() {
         let arena = Arena::new(None);
-        println!("Arena capacity: {}", arena.get_capacity());
+        println!("arena capacity: {}", arena.get_capacity());
     }
 
     #[test]
     fn test_with_cap() {
         let arena = Arena::with_capacity(10 * 1024, None);
-        println!("Arena capacity: {}", arena.get_capacity());
+        println!("arena capacity: {}", arena.get_capacity());
     }
+
     #[test]
     fn test_default_new() {
-        let mut arena = Arena::new(None);
+        let arena = Arena::new(None);
         let num = arena.alloc(42_i32).unwrap();
         assert_eq!(*num, 42);
 
         *num = 100;
         assert_eq!(*num, 100);
     }
+
     #[test]
     fn test_array_allocation() {
-        let mut arena = Arena::new(None);
+        let arena = Arena::new(None);
         let arr = arena.alloc([1, 2, 3, 3, 4]).unwrap();
         assert_eq!(arr[1], 2);
     }
+
     #[test]
     fn test_multiple_types_and_alignment() {
-        let mut arena = Arena::with_capacity(1024, None);
+        let arena = Arena::with_capacity(1024, None);
 
-        let k = arena.alloc([1, 2, 3, 4, 5]);
+        let _k = arena.alloc([1, 2, 3, 4, 5]).unwrap();
         let b = arena.alloc(255_u8).unwrap();
         let i = arena.alloc(123456_u64).unwrap();
         let f = arena.alloc(3.14159_f32).unwrap();
@@ -55,7 +57,7 @@ mod initialization {
             y: i32,
         }
 
-        let mut arena = Arena::with_capacity(1024, None);
+        let arena = Arena::with_capacity(1024, None);
 
         let p1 = arena
             .alloc(Point {
@@ -91,17 +93,18 @@ mod initialization {
 
     #[test]
     fn test_out_of_memory_error() {
-        let mut arena = Arena::with_capacity(4, None);
+        let arena = Arena::with_capacity(4, None);
 
         let result = arena.alloc(9999_u64);
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), AllocError::OutOfMemory);
     }
+
     #[test]
     fn test_helpers() {
         let arena = Arena::with_capacity(8, None);
-        let result = arena.alloc(0_i64);
+        let _result = arena.alloc(0_i64).unwrap();
 
         assert_eq!(arena.allocated_bytes(), 8);
         assert_eq!(arena.remaining_capacity(), 0);
@@ -110,7 +113,7 @@ mod initialization {
     #[test]
     fn test_reset() {
         let mut arena = Arena::new(None);
-        let var = arena.alloc(1_u32).unwrap();
+        let _var = arena.alloc(1_u32).unwrap();
         arena.reset();
         let var = arena.alloc(19_usize).unwrap();
         assert_eq!(*var, 19);

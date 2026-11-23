@@ -6,9 +6,9 @@ pub mod boxed;
 
 extern crate alloc as core_alloc;
 
-// use crate::arena::Arena;
 use crate::arena::{
     AllocError,
+    AllocError::SizeOverflow,
     Arena,
     Init,
     Uninit,
@@ -97,7 +97,22 @@ impl Arenas {
         }
     }
 
-    pub fn add_arena(&self) {
+    pub fn alloc<'a, T: Clone>(&self, value: T) -> &'a mut T {
+        let current = unsafe { self.current.get().as_ref() };
+
+        match current.alloc(value.clone()) {
+            Ok(ptr) => ptr,
+            Err(AllocError::SizeOverflow) => {
+                panic!("Size overflow");
+            }
+            Err(AllocError::OutOfMemory) => {
+                self.add_arena();
+                unsafe { self.current.get().as_ref().alloc(value).unwrap() }
+            }
+        }
+    }
+
+    fn add_arena(&self) {
         let capacity = self.next_chunk_cap.get();
         let arena = Arena::with_capacity(capacity, Some(self.current.get()));
         let layout = Layout::new::<Arena<Init>>();

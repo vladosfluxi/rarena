@@ -6,16 +6,20 @@ use core::{
 use rarena::{
     Arenas,
     arena::{
-        AllocError,
         Arena,
         Init,
-        Uninit,
     },
 };
 use std::alloc::{
     alloc,
     handle_alloc_error,
 };
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+struct Point {
+    x: i32,
+    y: i32,
+}
 
 #[test]
 fn test_smt() {
@@ -124,4 +128,106 @@ fn test_multiple_controllers_have_distinct_allocations() {
     }
 
     drop(controllers);
+}
+
+#[test]
+fn test_alloc_primitives_and_mutate() {
+    let arenas = Arenas::new();
+    let n: &mut i32 = arenas.alloc(10_i32);
+    assert_eq!(*n, 10);
+
+    *n = 25;
+    assert_eq!(*n, 25);
+}
+
+#[test]
+fn test_alloc_struct_and_compare() {
+    let arenas = Arenas::new();
+    let p1: &mut Point = arenas.alloc(Point {
+        x: 1,
+        y: 2,
+    });
+    let p2: &mut Point = arenas.alloc(Point {
+        x: -5,
+        y: 12,
+    });
+
+    assert_eq!(
+        *p1,
+        Point {
+            x: 1,
+            y: 2
+        }
+    );
+    assert_eq!(
+        *p2,
+        Point {
+            x: -5,
+            y: 12
+        }
+    );
+
+    p2.x = 7;
+    assert_eq!(
+        *p2,
+        Point {
+            x: 7,
+            y: 12
+        }
+    );
+}
+
+#[test]
+fn test_alloc_clone_string() {
+    let arenas = Arenas::new();
+    let original = String::from("arena item");
+    let allocated: &mut String = arenas.alloc(original.clone());
+
+    assert_eq!(original, "arena item");
+    assert_eq!(*allocated, "arena item");
+
+    allocated.push_str(" updated");
+    assert_eq!(*allocated, "arena item updated");
+}
+
+#[test]
+fn test_alloc_grows_across_chunks() {
+    let arenas = Arenas::with_capacity(core::mem::size_of::<Point>());
+    let initial_ptr = arenas.current.get();
+
+    let first = arenas.alloc(Point {
+        x: 1,
+        y: 1,
+    });
+    let second = arenas.alloc(Point {
+        x: 2,
+        y: 2,
+    });
+    let third = arenas.alloc(Point {
+        x: 3,
+        y: 3,
+    });
+
+    assert_eq!(
+        *first,
+        Point {
+            x: 1,
+            y: 1
+        }
+    );
+    assert_eq!(
+        *second,
+        Point {
+            x: 2,
+            y: 2
+        }
+    );
+    assert_eq!(
+        *third,
+        Point {
+            x: 3,
+            y: 3
+        }
+    );
+    assert_ne!(arenas.current.get(), initial_ptr);
 }

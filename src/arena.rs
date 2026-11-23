@@ -145,7 +145,7 @@ impl Arena<Init> {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllocError {
-    AllocErr,
+    // AllocErr,
     OutOfMemory,
     SizeOverflow,
 }
