@@ -8,6 +8,7 @@ extern crate alloc as core_alloc;
 
 // use crate::arena::Arena;
 use crate::arena::{
+    AllocError,
     Arena,
     Init,
     Uninit,
@@ -25,16 +26,18 @@ use core::{
     ptr::NonNull,
 };
 
+use core::cell::Cell;
+
 pub struct Arenas {
-    pub current: NonNull<Arena<Init>>,
-    pub next_chunk_cap: usize,
+    pub current: Cell<NonNull<Arena<Init>>>,
+    pub next_chunk_cap: Cell<usize>,
 }
 
 impl Arenas {
     pub fn new() -> Self {
         let arena = Arena::new(None);
         let layout = Layout::new::<Arena<Init>>();
-        let next_chunk_cap = arena.get_capacity() * 2;
+        let next_chunk_cap: usize = arena.get_capacity() * 2;
 
         let raw = unsafe { alloc(layout) };
         let current = match NonNull::new(raw.cast::<Arena<Init>>()) {
@@ -47,8 +50,8 @@ impl Arenas {
         }
 
         Self {
-            current,
-            next_chunk_cap,
+            current: Cell::new(current),
+            next_chunk_cap: Cell::new(next_chunk_cap),
         }
     }
 
@@ -68,8 +71,8 @@ impl Arenas {
         }
 
         Self {
-            current,
-            next_chunk_cap,
+            current: Cell::new(current),
+            next_chunk_cap: Cell::new(next_chunk_cap),
         }
     }
 
@@ -89,27 +92,35 @@ impl Arenas {
         }
 
         Self {
-            current,
-            next_chunk_cap,
+            current: Cell::new(current),
+            next_chunk_cap: Cell::new(next_chunk_cap),
         }
     }
 
-    // pub fn reset(&self) {
-    //     let mut cur: Option<NonNull<Arena<Init>>> = Some(self.current);
-    //     while let Some(node) = cur {
-    //         unsafe {
-    //             let ptr: *mut Arena<Init> = node.as_ptr();
-    //             let prev = (*ptr).prev.map(|p| p.cast::<Arena<Init>>());
-    //             (*ptr).dealloc();
-    //             cur = prev;
-    //         }
-    //     }
-    // }
+    pub fn add_arena(&self) {
+        let capacity = self.next_chunk_cap.get();
+        let arena = Arena::with_capacity(capacity, Some(self.current.get()));
+        let layout = Layout::new::<Arena<Init>>();
+
+        let raw = unsafe { alloc(layout) };
+
+        let ptr = match NonNull::new(raw.cast::<Arena<Init>>()) {
+            Some(ptr) => ptr,
+            None => handle_alloc_error(layout),
+        };
+
+        unsafe {
+            ptr.as_ptr().write(arena);
+        }
+
+        self.current.set(ptr);
+        self.next_chunk_cap.set(capacity * 2);
+    }
 }
 
 impl Drop for Arenas {
     fn drop(&mut self) {
-        let mut cur: Option<NonNull<Arena<Init>>> = Some(self.current);
+        let mut cur: Option<NonNull<Arena<Init>>> = Some(self.current.get());
         while let Some(node) = cur {
             unsafe {
                 let ptr: *mut Arena<Init> = node.as_ptr();

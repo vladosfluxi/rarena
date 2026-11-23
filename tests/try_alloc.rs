@@ -1,5 +1,8 @@
 mod initialization {
-    use rarena::arena::Arena;
+    use rarena::arena::{
+        AllocError,
+        Arena,
+    };
     use std::alloc::handle_alloc_error;
 
     #[test]
@@ -93,7 +96,7 @@ mod initialization {
         let result = arena.alloc(9999_u64);
 
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Not enough memory");
+        assert_eq!(result.unwrap_err(), AllocError::OutOfMemory);
     }
     #[test]
     fn test_helpers() {

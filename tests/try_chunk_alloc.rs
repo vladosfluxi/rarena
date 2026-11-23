@@ -1,10 +1,12 @@
 use core::{
     alloc::Layout,
+    cell::Cell,
     ptr::NonNull,
 };
 use rarena::{
     Arenas,
     arena::{
+        AllocError,
         Arena,
         Init,
         Uninit,
@@ -16,17 +18,23 @@ use std::alloc::{
 };
 
 #[test]
+fn test_smt() {
+    let _arenas = Arenas::new();
+}
+
+#[test]
 fn test_new_sets_current_and_doubles_capacity() {
     let base = Arena::new(None);
     let expected_next_cap = base.get_capacity() * 2;
     drop(base);
 
     let arenas = Arenas::new();
-    assert_ne!(arenas.current.as_ptr(), core::ptr::null_mut());
-    assert_eq!(arenas.next_chunk_cap, expected_next_cap);
+    let current_ptr = arenas.current.get();
+    assert_ne!(current_ptr.as_ptr(), core::ptr::null_mut());
+    assert_eq!(arenas.next_chunk_cap.get(), expected_next_cap);
 
-    let stored_cap = unsafe { arenas.current.as_ref().get_capacity() };
-    assert_eq!(arenas.next_chunk_cap, stored_cap * 2);
+    let stored_cap = unsafe { current_ptr.as_ref().get_capacity() };
+    assert_eq!(arenas.next_chunk_cap.get(), stored_cap * 2);
 }
 
 #[test]
@@ -37,8 +45,8 @@ fn test_with_capacity_sets_current_and_next_chunk_cap() {
     drop(base);
 
     let arenas = Arenas::with_capacity(cap);
-    assert_ne!(arenas.current.as_ptr(), core::ptr::null_mut());
-    assert_eq!(arenas.next_chunk_cap, expected_next_cap);
+    assert_ne!(arenas.current.get().as_ptr(), core::ptr::null_mut());
+    assert_eq!(arenas.next_chunk_cap.get(), expected_next_cap);
 }
 
 #[test]
@@ -49,14 +57,14 @@ fn test_with_layout_sets_current_and_next_chunk_cap() {
     drop(base);
 
     let arenas = Arenas::with_layout(chunk_layout);
-    assert_ne!(arenas.current.as_ptr(), core::ptr::null_mut());
-    assert_eq!(arenas.next_chunk_cap, expected_next_cap);
+    assert_ne!(arenas.current.get().as_ptr(), core::ptr::null_mut());
+    assert_eq!(arenas.next_chunk_cap.get(), expected_next_cap);
 }
 
 #[test]
 fn test_current_points_to_distinct_heap_allocation() {
     let arenas = Arenas::new();
-    let chunk_ptr = arenas.current.as_ptr();
+    let chunk_ptr = arenas.current.get().as_ptr();
     let stack_addr = &arenas as *const _ as usize;
 
     assert_ne!(chunk_ptr as usize, stack_addr);
@@ -71,7 +79,7 @@ fn test_drop_single_chunk() {
 #[test]
 fn test_drop_linked_chain_of_chunks() {
     let first = Arenas::with_capacity(128);
-    let second = Arena::with_capacity(256, Some(first.current.cast::<Arena<Uninit>>()));
+    let second = Arena::with_capacity(256, Some(first.current.get()));
 
     let second_layout = Layout::new::<Arena<Init>>();
     let second_raw = unsafe { alloc(second_layout) };
@@ -81,7 +89,7 @@ fn test_drop_linked_chain_of_chunks() {
         second_ptr.as_ptr().write(second);
     }
 
-    let third = Arena::with_capacity(512, Some(second_ptr.cast::<Arena<Uninit>>()));
+    let third = Arena::with_capacity(512, Some(second_ptr));
     let third_layout = Layout::new::<Arena<Init>>();
     let third_raw = unsafe { alloc(third_layout) };
     let third_ptr = NonNull::new(third_raw.cast::<Arena<Init>>())
@@ -92,8 +100,8 @@ fn test_drop_linked_chain_of_chunks() {
 
     core::mem::forget(first);
     let chain = Arenas {
-        current: third_ptr,
-        next_chunk_cap: 1024,
+        current: Cell::new(third_ptr),
+        next_chunk_cap: Cell::new(1024_usize),
     };
 
     drop(chain);
@@ -101,12 +109,12 @@ fn test_drop_linked_chain_of_chunks() {
 
 #[test]
 fn test_multiple_controllers_have_distinct_allocations() {
-    let mut controllers: Vec<Arenas> = (0..8)
+    let controllers: Vec<Arenas> = (0..8)
         .map(|i| Arenas::with_capacity(64 * (i + 1)))
         .collect();
     let ptrs: Vec<usize> = controllers
         .iter()
-        .map(|a| a.current.as_ptr() as usize)
+        .map(|a| a.current.get().as_ptr() as usize)
         .collect();
 
     for i in 0..ptrs.len() {
@@ -115,5 +123,5 @@ fn test_multiple_controllers_have_distinct_allocations() {
         }
     }
 
-    controllers.clear();
+    drop(controllers);
 }

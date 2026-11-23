@@ -35,7 +35,7 @@ pub struct Arena<S = Uninit> {
     cap: usize,
     ptr_buffer: *mut u8,
     layout: Layout,
-    pub prev: Option<NonNull<Arena>>,
+    pub prev: Option<NonNull<Arena<Init>>>,
     state: PhantomData<S>,
 }
 
@@ -59,16 +59,16 @@ impl Arena<Init> {
         (total_needed, dest_addr)
     }
 
-    pub fn new(prev: Option<NonNull<Arena>>) -> Self {
+    pub fn new(prev: Option<NonNull<Arena<Init>>>) -> Self {
         Self::with_capacity(4096, prev)
     }
 
-    pub fn with_capacity(cap: usize, prev: Option<NonNull<Arena>>) -> Self {
+    pub fn with_capacity(cap: usize, prev: Option<NonNull<Arena<Init>>>) -> Self {
         let layout = Layout::array::<u8>(cap).unwrap();
         Self::with_layout(layout, prev)
     }
 
-    pub fn with_layout(layout: Layout, prev: Option<NonNull<Arena>>) -> Self {
+    pub fn with_layout(layout: Layout, prev: Option<NonNull<Arena<Init>>>) -> Self {
         let cap = layout.size();
         let raw_ptr = unsafe { alloc(layout) };
 
@@ -143,7 +143,7 @@ impl Arena<Init> {
         self.cap - self.offset.get()
     }
 }
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllocError {
     AllocErr,
     OutOfMemory,
