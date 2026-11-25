@@ -33,12 +33,28 @@ fn test_new_sets_current_and_doubles_capacity() {
     drop(base);
 
     let arenas = Arenas::new();
-    let current_ptr = arenas.current.get();
+    let current_ptr = arenas
+        .current
+        .get();
     assert_ne!(current_ptr.as_ptr(), core::ptr::null_mut());
-    assert_eq!(arenas.next_chunk_cap.get(), expected_next_cap);
+    assert_eq!(
+        arenas
+            .next_chunk_cap
+            .get(),
+        expected_next_cap
+    );
 
-    let stored_cap = unsafe { current_ptr.as_ref().get_capacity() };
-    assert_eq!(arenas.next_chunk_cap.get(), stored_cap * 2);
+    let stored_cap = unsafe {
+        current_ptr
+            .as_ref()
+            .get_capacity()
+    };
+    assert_eq!(
+        arenas
+            .next_chunk_cap
+            .get(),
+        stored_cap * 2
+    );
 }
 
 #[test]
@@ -49,8 +65,19 @@ fn test_with_capacity_sets_current_and_next_chunk_cap() {
     drop(base);
 
     let arenas = Arenas::with_capacity(cap);
-    assert_ne!(arenas.current.get().as_ptr(), core::ptr::null_mut());
-    assert_eq!(arenas.next_chunk_cap.get(), expected_next_cap);
+    assert_ne!(
+        arenas
+            .current
+            .get()
+            .as_ptr(),
+        core::ptr::null_mut()
+    );
+    assert_eq!(
+        arenas
+            .next_chunk_cap
+            .get(),
+        expected_next_cap
+    );
 }
 
 #[test]
@@ -61,14 +88,28 @@ fn test_with_layout_sets_current_and_next_chunk_cap() {
     drop(base);
 
     let arenas = Arenas::with_layout(chunk_layout);
-    assert_ne!(arenas.current.get().as_ptr(), core::ptr::null_mut());
-    assert_eq!(arenas.next_chunk_cap.get(), expected_next_cap);
+    assert_ne!(
+        arenas
+            .current
+            .get()
+            .as_ptr(),
+        core::ptr::null_mut()
+    );
+    assert_eq!(
+        arenas
+            .next_chunk_cap
+            .get(),
+        expected_next_cap
+    );
 }
 
 #[test]
 fn test_current_points_to_distinct_heap_allocation() {
     let arenas = Arenas::new();
-    let chunk_ptr = arenas.current.get().as_ptr();
+    let chunk_ptr = arenas
+        .current
+        .get()
+        .as_ptr();
     let stack_addr = &arenas as *const _ as usize;
 
     assert_ne!(chunk_ptr as usize, stack_addr);
@@ -83,14 +124,23 @@ fn test_drop_single_chunk() {
 #[test]
 fn test_drop_linked_chain_of_chunks() {
     let first = Arenas::with_capacity(128);
-    let second = Arena::with_capacity(256, Some(first.current.get()));
+    let second = Arena::with_capacity(
+        256,
+        Some(
+            first
+                .current
+                .get(),
+        ),
+    );
 
     let second_layout = Layout::new::<Arena<Init>>();
     let second_raw = unsafe { alloc(second_layout) };
     let second_ptr = NonNull::new(second_raw.cast::<Arena<Init>>())
         .unwrap_or_else(|| handle_alloc_error(second_layout));
     unsafe {
-        second_ptr.as_ptr().write(second);
+        second_ptr
+            .as_ptr()
+            .write(second);
     }
 
     let third = Arena::with_capacity(512, Some(second_ptr));
@@ -99,7 +149,9 @@ fn test_drop_linked_chain_of_chunks() {
     let third_ptr = NonNull::new(third_raw.cast::<Arena<Init>>())
         .unwrap_or_else(|| handle_alloc_error(third_layout));
     unsafe {
-        third_ptr.as_ptr().write(third);
+        third_ptr
+            .as_ptr()
+            .write(third);
     }
 
     core::mem::forget(first);
@@ -118,7 +170,11 @@ fn test_multiple_controllers_have_distinct_allocations() {
         .collect();
     let ptrs: Vec<usize> = controllers
         .iter()
-        .map(|a| a.current.get().as_ptr() as usize)
+        .map(|a| {
+            a.current
+                .get()
+                .as_ptr() as usize
+        })
         .collect();
 
     for i in 0..ptrs.len() {
@@ -193,7 +249,9 @@ fn test_alloc_clone_string() {
 #[test]
 fn test_alloc_grows_across_chunks() {
     let arenas = Arenas::with_capacity(core::mem::size_of::<Point>());
-    let initial_ptr = arenas.current.get();
+    let initial_ptr = arenas
+        .current
+        .get();
 
     let first = arenas.alloc(Point {
         x: 1,
@@ -229,5 +287,214 @@ fn test_alloc_grows_across_chunks() {
             y: 3
         }
     );
-    assert_ne!(arenas.current.get(), initial_ptr);
+    assert_ne!(
+        arenas
+            .current
+            .get(),
+        initial_ptr
+    );
+}
+#[repr(align(64))]
+#[derive(Debug, PartialEq, Clone, Copy)]
+struct AlignedBlock([u8; 24]);
+
+#[test]
+fn test_alloc_slice_init_and_mutate() {
+    let arenas = Arenas::with_capacity(128);
+    let slice: &mut [i32] = arenas.alloc_slice::<i32>(4);
+    assert_eq!(slice.len(), 4);
+
+    for (i, slot) in slice
+        .iter_mut()
+        .enumerate()
+    {
+        *slot = (i as i32 + 1) * 10;
+    }
+
+    assert_eq!(slice, &[10, 20, 30, 40]);
+    slice[1] = -99;
+    assert_eq!(slice[1], -99);
+}
+
+#[test]
+fn test_alloc_slice_structs_init() {
+    let arenas = Arenas::new();
+    let slice: &mut [Point] = arenas.alloc_slice::<Point>(3);
+    assert_eq!(slice.len(), 3);
+
+    for (i, slot) in slice
+        .iter_mut()
+        .enumerate()
+    {
+        let v = i as i32;
+        *slot = Point {
+            x: v,
+            y: v * 2,
+        };
+    }
+
+    assert_eq!(
+        slice,
+        &[
+            Point {
+                x: 0,
+                y: 0
+            },
+            Point {
+                x: 1,
+                y: 2
+            },
+            Point {
+                x: 2,
+                y: 4
+            },
+        ]
+    );
+}
+
+#[test]
+fn test_alloc_slice_zero_len() {
+    let arenas = Arenas::with_capacity(64);
+    let slice: &mut [Point] = arenas.alloc_slice::<Point>(0);
+
+    assert!(slice.is_empty());
+    assert_eq!(slice.len(), 0);
+}
+
+#[test]
+fn test_alloc_slice_alignment_after_unaligned_alloc() {
+    let arenas = Arenas::with_capacity(128);
+    let _byte = arenas.alloc(7_u8);
+
+    let slice: &mut [AlignedBlock] = arenas.alloc_slice::<AlignedBlock>(2);
+    assert_eq!(slice.len(), 2);
+    assert_eq!((slice.as_ptr() as usize) % core::mem::align_of::<AlignedBlock>(), 0);
+
+    slice[0] = AlignedBlock([1; 24]);
+    slice[1] = AlignedBlock([2; 24]);
+    assert_eq!(slice[0], AlignedBlock([1; 24]));
+    assert_eq!(slice[1], AlignedBlock([2; 24]));
+}
+
+#[test]
+fn test_alloc_slice_grows_across_chunks() {
+    let arenas = Arenas::with_capacity(32);
+    let initial_ptr = arenas
+        .current
+        .get();
+
+    for i in 0..32_i32 {
+        let slice: &mut [i32] = arenas.alloc_slice::<i32>(16);
+        assert_eq!(slice.len(), 16);
+
+        for (j, slot) in slice
+            .iter_mut()
+            .enumerate()
+        {
+            *slot = i * 100 + j as i32;
+        }
+
+        assert_eq!(slice[0], i * 100);
+        assert_eq!(slice[15], i * 100 + 15);
+    }
+
+    assert_ne!(
+        arenas
+            .current
+            .get(),
+        initial_ptr
+    );
+}
+#[repr(align(64))]
+#[derive(Debug, PartialEq, Clone, Copy)]
+struct AlignedItem(u64);
+
+#[test]
+fn test_alloc_array_primitives_and_mutate() {
+    let arenas = Arenas::with_capacity(128);
+    let arr: &mut [i32; 4] = arenas.alloc([10, 20, 30, 40]);
+
+    assert_eq!(*arr, [10, 20, 30, 40]);
+    arr[0] = -5;
+    arr[2] = 77;
+    assert_eq!(*arr, [-5, 20, 77, 40]);
+}
+
+#[test]
+fn test_alloc_array_structs() {
+    let arenas = Arenas::new();
+    let arr: &mut [Point; 2] = arenas.alloc([
+        Point {
+            x: 1,
+            y: 2,
+        },
+        Point {
+            x: 3,
+            y: 4,
+        },
+    ]);
+
+    assert_eq!(
+        arr[0],
+        Point {
+            x: 1,
+            y: 2
+        }
+    );
+    assert_eq!(
+        arr[1],
+        Point {
+            x: 3,
+            y: 4
+        }
+    );
+
+    arr[1].x = 9;
+    assert_eq!(
+        arr[1],
+        Point {
+            x: 9,
+            y: 4
+        }
+    );
+}
+
+#[test]
+fn test_alloc_zero_sized_array() {
+    let arenas = Arenas::with_capacity(64);
+    let empty: &mut [Point; 0] = arenas.alloc([]);
+
+    assert_eq!(empty.len(), 0);
+}
+
+#[test]
+fn test_alloc_array_alignment_after_unaligned_alloc() {
+    let arenas = Arenas::with_capacity(256);
+    let _byte = arenas.alloc(7_u8);
+
+    let arr: &mut [AlignedItem; 3] = arenas.alloc([AlignedItem(1), AlignedItem(2), AlignedItem(3)]);
+
+    assert_eq!((arr.as_ptr() as usize) % core::mem::align_of::<AlignedItem>(), 0);
+    assert_eq!(*arr, [AlignedItem(1), AlignedItem(2), AlignedItem(3)]);
+}
+
+#[test]
+fn test_alloc_array_grows_across_chunks() {
+    let arenas = Arenas::with_capacity(32);
+    let initial_ptr = arenas
+        .current
+        .get();
+
+    for i in 0..20_i32 {
+        let base = i * 4;
+        let arr: &mut [i32; 4] = arenas.alloc([base, base + 1, base + 2, base + 3]);
+        assert_eq!(*arr, [base, base + 1, base + 2, base + 3]);
+    }
+
+    assert_ne!(
+        arenas
+            .current
+            .get(),
+        initial_ptr
+    );
 }

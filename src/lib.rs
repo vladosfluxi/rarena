@@ -106,6 +106,39 @@ impl Arenas {
         cap.max(worst_case)
     }
 
+    pub fn alloc_slice<'a, T>(&self, count: usize) -> &'a mut [T] {
+        let mut current = unsafe {
+            self.current
+                .get()
+                .as_ref()
+        };
+
+        let size = mem::size_of::<T>() * count;
+        let align = align_of::<T>();
+
+        if current
+            .try_alloc(size, align)
+            .is_err()
+        {
+            let cap = self
+                .next_chunk_cap
+                .get();
+            let next_size = Self::calculate_next_chunk_size(cap, size, align);
+
+            self.next_chunk_cap
+                .set(next_size);
+            self.add_arena();
+
+            current = unsafe {
+                self.current
+                    .get()
+                    .as_ref()
+            };
+        }
+
+        current.alloc_slice(count)
+    }
+
     fn add_arena(&self) {
         let capacity = self
             .next_chunk_cap
