@@ -26,6 +26,8 @@ use core::{
     ptr::NonNull,
 };
 
+use core::mem;
+
 use core::cell::Cell;
 
 pub struct Arenas {
@@ -66,29 +68,42 @@ impl Arenas {
         }
     }
 
-    pub fn alloc<'a, T: Clone>(&self, value: T) -> &'a mut T {
-        let current = unsafe {
+    pub fn alloc<'a, T>(&self, value: T) -> &'a mut T {
+        let size = mem::size_of::<T>();
+        let align = mem::align_of::<T>();
+
+        let mut current = unsafe {
             self.current
                 .get()
                 .as_ref()
         };
 
-        match current.alloc(value.clone()) {
-            Ok(ptr) => ptr,
-            Err(AllocError::SizeOverflow) => {
-                panic!("Size overflow");
-            }
-            Err(AllocError::OutOfMemory) => {
-                self.add_arena();
-                unsafe {
-                    self.current
-                        .get()
-                        .as_ref()
-                        .alloc(value)
-                        .unwrap()
-                }
-            }
+        if current
+            .try_alloc(size, align)
+            .is_err()
+        {
+            let cap = self
+                .next_chunk_cap
+                .get();
+            let next_size = Self::calculate_next_chunk_size(cap, size, align);
+
+            self.next_chunk_cap
+                .set(next_size);
+            self.add_arena();
+
+            current = unsafe {
+                self.current
+                    .get()
+                    .as_ref()
+            };
         }
+
+        current.alloc(value)
+    }
+
+    fn calculate_next_chunk_size(cap: usize, size: usize, align: usize) -> usize {
+        let worst_case = (align - 1).saturating_add(size);
+        cap.max(worst_case)
     }
 
     fn add_arena(&self) {
@@ -119,7 +134,7 @@ impl Arenas {
         self.current
             .set(ptr);
         self.next_chunk_cap
-            .set(capacity * 2);
+            .set(capacity.saturating_mul(2));
     }
 }
 

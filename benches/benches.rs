@@ -1,4 +1,7 @@
-use core::hint::black_box;
+use core::{
+    hint::black_box,
+    time::Duration,
+};
 use criterion::*;
 use rarena::{
     Arenas,
@@ -11,7 +14,7 @@ struct Small(u8);
 #[derive(Default, Clone)]
 struct Big([usize; 30]);
 
-const ALLOCATIONS: usize = 10_000;
+const ALLOCATIONS: usize = 2_000;
 
 fn alloc_multi<T: Default + Clone>(n: usize, initial_cap: usize) {
     let arenas = Arenas::with_capacity(initial_cap);
@@ -23,11 +26,13 @@ fn alloc_multi<T: Default + Clone>(n: usize, initial_cap: usize) {
 }
 
 fn alloc_single<T: Default>(n: usize) {
-    let cap = n * (core::mem::size_of::<T>() + core::mem::align_of::<T>());
+    let cap = n
+        .saturating_mul(core::mem::size_of::<T>())
+        .saturating_add(core::mem::align_of::<T>());
     let arena = Arena::with_capacity(cap, None);
 
     for _ in 0..n {
-        let val: &mut T = arena.alloc(black_box(T::default())).unwrap();
+        let val: &mut T = arena.alloc(black_box(T::default()));
         black_box(val);
     }
 }
@@ -39,13 +44,17 @@ fn alloc_system<T: Default>(n: usize) {
         let boxed = Box::new(black_box(T::default()));
         storage.push(black_box(boxed));
     }
+
+    black_box(&storage);
 }
 
 fn bench_alloc(c: &mut Criterion) {
     let mut group = c.benchmark_group("Alloc");
     group.throughput(Throughput::Elements(ALLOCATIONS as u64));
+    group.sample_size(20);
+    group.warm_up_time(Duration::from_secs(1));
+    group.measurement_time(Duration::from_secs(2));
 
-    // Multi-chunk Arenas benchmarks (with small initial cap to trigger growth)
     group.bench_function("small_arenas_grow", |b| {
         b.iter(|| alloc_multi::<Small>(ALLOCATIONS, 64));
     });
@@ -53,7 +62,6 @@ fn bench_alloc(c: &mut Criterion) {
         b.iter(|| alloc_multi::<Big>(ALLOCATIONS, 512));
     });
 
-    // Single-chunk Arena benchmarks (pre-sized)
     group.bench_function("small_arena", |b| {
         b.iter(|| alloc_single::<Small>(ALLOCATIONS));
     });
@@ -61,7 +69,6 @@ fn bench_alloc(c: &mut Criterion) {
         b.iter(|| alloc_single::<Big>(ALLOCATIONS));
     });
 
-    // System Box::new comparison benchmarks
     group.bench_function("small_system_box", |b| {
         b.iter(|| alloc_system::<Small>(ALLOCATIONS));
     });
